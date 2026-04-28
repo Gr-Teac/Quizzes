@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retrieval Grid Maker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2pdf.js for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .difficulty-easy { background-color: #dcfce7; border-color: #86efac; } /* Pastel Green */
+        .difficulty-medium { background-color: #fef3c7; border-color: #fcd34d; } /* Pastel Amber */
+        .difficulty-hard { background-color: #fee2e2; border-color: #f87171; } /* Pastel Red */
+        .difficulty-stretch { background-color: #f3e8ff; border-color: #d8b4fe; } /* Pastel Purple */
+
+        /* UI Preview Styles */
+        .grid-cell {
+            aspect-ratio: 1.4 / 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 8px;
+            border: 2px solid;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            line-height: 1.2;
+            word-break: break-word;
+            overflow: hidden;
+            min-height: 80px;
+        }
+
+        .cell-text {
+            display: -webkit-box;
+            -webkit-line-clamp: 5;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        /* PDF Specific Container Styles */
+        #pdf-content {
+            background: white;
+            box-sizing: border-box;
+            width: 1123px; /* A4 Landscape at 96 DPI */
+            height: 794px;
+            padding: 30px 40px; /* Reduced vertical padding slightly to prevent bottom clipping */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* Changed from space-between to sit higher */
+            position: relative;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #pdf-grid {
+            display: grid;
+            flex-grow: 1;
+            align-content: stretch;
+            margin-bottom: 20px; /* Explicit spacing for footer */
+        }
+
+        /* Ensures cells in PDF flex correctly to fill available height */
+        .pdf-cell {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 6px;
+            border: 2px solid;
+            border-radius: 4px;
+            height: 100%;
+            word-break: break-word;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 no-print">
+            <h1 class="text-3xl font-bold text-slate-800">Retrieval Grid Maker</h1>
+            <p class="text-slate-600">Enter your questions, set your grid size, and generate a randomized retrieval task.</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-4 gap-8 no-print">
+            <!-- Sidebar: Inputs -->
+            <div class="xl:col-span-1 space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <span>⚙️ Settings</span>
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Custom Heading</label>
+                            <input type="text" id="grid-heading" class="w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-slate-400 outline-none" placeholder="e.g. Retrieval Grid: Topic X">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Columns</label>
+                                <select id="grid-cols" class="w-full p-2 border rounded-md text-sm bg-white">
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6" selected>6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Rows</label>
+                                <select id="grid-rows" class="w-full p-2 border rounded-md text-sm bg-white">
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5" selected>5</option>
+                                    <option value="6">6</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h2 class="text-lg font-semibold mt-8 mb-4 flex items-center gap-2">
+                        <span>📝 Question Bank</span>
+                        <span id="total-count" class="text-sm font-normal bg-slate-100 px-2 py-1 rounded">0 / 30</span>
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-green-700 mb-1">Easy Questions (Green)</label>
+                            <textarea id="input-easy" rows="2" class="w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-green-400 outline-none" placeholder="One per line..."></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-amber-700 mb-1">Medium Questions (Amber)</label>
+                            <textarea id="input-medium" rows="2" class="w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-amber-400 outline-none" placeholder="One per line..."></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-red-700 mb-1">Hard Questions (Red)</label>
+                            <textarea id="input-hard" rows="2" class="w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-red-400 outline-none" placeholder="One per line..."></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-purple-700 mb-1">Stretch Questions (Purple)</label>
+                            <textarea id="input-stretch" rows="2" class="w-full p-2 border rounded-md text-sm focus:ring-2 focus:ring-purple-400 outline-none" placeholder="One per line..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 space-y-3">
+                        <button onclick="generateGrid()" class="w-full bg-slate-800 text-white py-3 rounded-lg font-semibold hover:bg-slate-700 transition">
+                            Generate Randomized Grid
+                        </button>
+                        <button onclick="downloadPDF()" id="download-btn" class="w-full border-2 border-slate-800 text-slate-800 py-3 rounded-lg font-semibold hover:bg-slate-50 transition hidden">
+                            Download A4 Landscape PDF
+                        </button>
+                    </div>
+                </div>
+                <div id="alert-box" class="hidden p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm"></div>
+            </div>
+
+            <!-- Main: Preview -->
+            <div class="xl:col-span-3">
+                <div class="bg-white p-6 rounded-xl shadow-inner border border-slate-200 min-h-[600px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Grid Preview</h3>
+                        <div id="target-count-display" class="text-xs font-bold text-slate-500 uppercase tracking-tighter">Target: 30 Questions</div>
+                    </div>
+                    <div id="grid-container" class="grid gap-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden container for PDF export - fixed width for rendering -->
+        <div id="pdf-export-wrapper" style="position: fixed; left: -2000px; top: 0; width: 1123px; overflow: hidden; pointer-events: none;">
+            <div id="pdf-content">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h1 id="pdf-title-display" class="text-3xl font-bold text-slate-800">Retrieval Grid</h1>
+                        <p class="text-slate-500 mt-1">Name: __________________________  Date: ____________</p>
+                    </div>
+                    <!-- Color Key in Top Right -->
+                    <div class="flex gap-4 border-2 border-slate-100 p-3 rounded-lg bg-white">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-4 h-4 difficulty-easy border border-green-400 rounded"></div> 
+                            <span class="text-[10px] font-bold text-slate-600 uppercase">Easy</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-4 h-4 difficulty-medium border border-amber-400 rounded"></div> 
+                            <span class="text-[10px] font-bold text-slate-600 uppercase">Med</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-4 h-4 difficulty-hard border border-red-400 rounded"></div> 
+                            <span class="text-[10px] font-bold text-slate-600 uppercase">Hard</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-4 h-4 difficulty-stretch border border-purple-400 rounded"></div> 
+                            <span class="text-[10px] font-bold text-slate-600 uppercase">Stretch</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="pdf-grid" class="gap-2"></div>
+                
+                <div class="flex justify-between items-center pt-3 border-t-2 border-slate-100">
+                    <div id="pdf-footer-text" class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                        Knowledge Retrieval Matrix
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestions = [];
+
+        function getTargetCount() {
+            const cols = parseInt(document.getElementById('grid-cols').value);
+            const rows = parseInt(document.getElementById('grid-rows').value);
+            return cols * rows;
+        }
+
+        function updateUI() {
+            const target = getTargetCount();
+            document.getElementById('target-count-display').innerText = `Target: ${target} Questions`;
+            const count = getQuestionsFromInputs().length;
+            const counter = document.getElementById('total-count');
+            counter.innerText = `${count} / ${target}`;
+            counter.className = count === target 
+                ? 'text-sm font-normal bg-green-100 text-green-700 px-2 py-1 rounded' 
+                : 'text-sm font-normal bg-slate-100 px-2 py-1 rounded';
+        }
+
+        function getQuestionsFromInputs() {
+            const difficulties = [
+                { id: 'easy', class: 'difficulty-easy' },
+                { id: 'medium', class: 'difficulty-medium' },
+                { id: 'hard', class: 'difficulty-hard' },
+                { id: 'stretch', class: 'difficulty-stretch' }
+            ];
+            let all = [];
+            difficulties.forEach(diff => {
+                const text = document.getElementById(`input-${diff.id}`).value;
+                const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
+                lines.forEach(q => {
+                    all.push({ text: q, difficulty: diff.id, className: diff.class });
+                });
+            });
+            return all;
+        }
+
+        const textareas = document.querySelectorAll('textarea');
+        textareas.forEach(ta => ta.addEventListener('input', updateUI));
+        document.getElementById('grid-cols').addEventListener('change', updateUI);
+        document.getElementById('grid-rows').addEventListener('change', updateUI);
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function generateGrid() {
+            const questions = getQuestionsFromInputs();
+            const alertBox = document.getElementById('alert-box');
+            const target = getTargetCount();
+            const cols = document.getElementById('grid-cols').value;
+            const rows = document.getElementById('grid-rows').value;
+            const heading = document.getElementById('grid-heading').value || 'Retrieval Grid';
+            
+            if (questions.length !== target) {
+                alertBox.classList.remove('hidden');
+                alertBox.innerText = `You have ${questions.length} questions. You need exactly ${target} to fill the ${cols}x${rows} grid.`;
+                return;
+            }
+
+            alertBox.classList.add('hidden');
+            currentQuestions = shuffle([...questions]);
+            
+            document.getElementById('pdf-title-display').innerText = heading;
+            document.getElementById('pdf-footer-text').innerText = `${cols}x${rows} Knowledge Retrieval Matrix`;
+
+            renderGrid('grid-container', currentQuestions, cols, false);
+            renderGrid('pdf-grid', currentQuestions, cols, true);
+            
+            document.getElementById('download-btn').classList.remove('hidden');
+        }
+
+        function renderGrid(containerId, questions, cols, isPDF) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            container.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            
+            questions.forEach((q) => {
+                const cell = document.createElement('div');
+                cell.className = isPDF ? `pdf-cell ${q.className}` : `grid-cell ${q.className}`;
+                
+                // Adaptive font scaling
+                let fontSize = '0.85rem';
+                if (q.text.length > 80) fontSize = '0.65rem';
+                else if (q.text.length > 50) fontSize = '0.75rem';
+                
+                // If it's a very large grid, shrink text more to fit
+                const target = getTargetCount();
+                if (target > 30) {
+                    fontSize = `calc(${fontSize} * 0.9)`;
+                }
+
+                cell.innerHTML = `
+                    <div class="${isPDF ? '' : 'cell-text'} font-medium" style="font-size: ${fontSize}">
+                        ${q.text}
+                    </div>
+                `;
+                container.appendChild(cell);
+            });
+        }
+
+        function downloadPDF() {
+            const element = document.getElementById('pdf-content');
+            const opt = {
+                margin: 0,
+                filename: 'retrieval-grid.pdf',
+                image: { type: 'jpeg', quality: 1.0 },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    logging: false,
+                    width: 1123,
+                    height: 794,
+                    scrollY: 0,
+                    scrollX: 0
+                },
+                jsPDF: { unit: 'px', format: [1123, 794], orientation: 'landscape' }
+            };
+
+            html2pdf().set(opt).from(element).save();
+        }
+
+        window.onload = () => {
+            const container = document.getElementById('grid-container');
+            container.style.gridTemplateColumns = 'repeat(6, minmax(0, 1fr))';
+            for(let i=1; i<=30; i++) {
+                const div = document.createElement('div');
+                div.className = 'grid-cell border-dashed border-slate-300 bg-slate-50 text-slate-400';
+                div.innerText = i;
+                container.appendChild(div);
+            }
+        };
+    </script>
+</body>
+</html>
